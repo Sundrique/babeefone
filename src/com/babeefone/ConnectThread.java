@@ -5,42 +5,38 @@ import android.bluetooth.BluetoothSocket;
 
 import java.io.IOException;
 
-/**
- * This thread runs while attempting to make an outgoing connection
- * with a device. It runs straight through; the connection either
- * succeeds or fails.
- */
 class ConnectThread extends BaseThread {
 
     private BluetoothDevice device;
 
-    public ConnectThread(BabeefoneService babeefoneService, BluetoothDevice device) {
-        super(babeefoneService);
+    public ConnectThread(MainService mainService, BluetoothDevice device) {
+        super(mainService);
         this.device = device;
     }
 
     public void run() {
-        babeefoneService.getBluetoothAdapter().cancelDiscovery();
+        mainService.getBluetoothAdapter().cancelDiscovery();
         BluetoothSocket bluetoothSocket = null;
 
         try {
-            bluetoothSocket = device.createRfcommSocketToServiceRecord(BabeefoneService.MY_UUID);
+            bluetoothSocket = device.createRfcommSocketToServiceRecord(MainService.MY_UUID);
             bluetoothSocket.connect();
             if (!canceled) {
-                babeefoneService.connected(bluetoothSocket, device);
+                mainService.connected(bluetoothSocket, device);
             }
             return;
         } catch (IOException e) {
             try {
-                bluetoothSocket.close();
+                if (bluetoothSocket != null) {
+                    bluetoothSocket.close();
+                }
             } catch (IOException e2) {
                 // todo log exception
             }
         }
 
         if (!canceled) {
-            babeefoneService.connectionFailed(this);
+            mainService.connectionFailed(this);
         }
     }
-
 }

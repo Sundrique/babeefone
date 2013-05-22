@@ -1,11 +1,11 @@
 package com.babeefone;
 
 public class BaseThread extends Thread {
-    protected final BabeefoneService babeefoneService;
+    protected final MainService mainService;
     protected Boolean canceled = false;
 
-    public BaseThread(BabeefoneService babeefoneService) {
-        this.babeefoneService = babeefoneService;
+    public BaseThread(MainService mainService) {
+        this.mainService = mainService;
     }
 
     public void cancel() {

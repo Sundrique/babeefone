@@ -8,10 +8,6 @@ import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 
-/**
- * This thread runs during a connection with a remote device.
- * It handles all incoming and outgoing transmissions.
- */
 class ConnectedThread extends BaseThread {
     private static final Object PLAYER_LOCK = new Object();
     private ObjectInputStream objectInputStream;
@@ -20,13 +16,13 @@ class ConnectedThread extends BaseThread {
     private AudioTrack audioTrack;
     private int outBufferSize;
 
-    public ConnectedThread(BabeefoneService babeefoneService) {
-        super(babeefoneService);
+    public ConnectedThread(MainService mainService) {
+        super(mainService);
 
         try {
-            bufferedInputStream = new BufferedInputStream(babeefoneService.getBluetoothSocket().getInputStream());
+            bufferedInputStream = new BufferedInputStream(mainService.getBluetoothSocket().getInputStream());
         } catch (IOException e) {
-            // todo log exception
+            mainService.connectionLost();
         }
 
         initAudioTrack();
@@ -37,11 +33,11 @@ class ConnectedThread extends BaseThread {
             if (null != audioTrack) {
                 audioTrack.release();
             }
-            outBufferSize = AudioTrack.getMinBufferSize(BabeefoneService.SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, BabeefoneService.AUDIO_FORMAT);
+            outBufferSize = AudioTrack.getMinBufferSize(MainService.SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, MainService.AUDIO_FORMAT);
             audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
-                    BabeefoneService.SAMPLE_RATE,
+                    MainService.SAMPLE_RATE,
                     AudioFormat.CHANNEL_OUT_MONO,
-                    BabeefoneService.AUDIO_FORMAT,
+                    MainService.AUDIO_FORMAT,
                     outBufferSize,
                     AudioTrack.MODE_STREAM);
         }
@@ -56,6 +52,7 @@ class ConnectedThread extends BaseThread {
                 try {
                     dataPacket = (DataPacket) objectInputStream.readObject();
                 } catch (ClassNotFoundException e) {
+                    // todo log exception
                 }
 
                 if (dataPacket == null) {
@@ -67,7 +64,7 @@ class ConnectedThread extends BaseThread {
                         writeAudio(dataPacket.audioData);
                         break;
                     case DataPacket.TYPE_MODE:
-                        babeefoneService.setMode(dataPacket.mode);
+                        mainService.setMode(dataPacket.mode);
                         break;
                     default:
                         throw new IllegalArgumentException("Unknown packet type");
@@ -75,7 +72,7 @@ class ConnectedThread extends BaseThread {
             }
         } catch (IOException e) {
             if (!canceled) {
-                babeefoneService.connectionLost();
+                mainService.connectionLost();
             }
         }
 
@@ -97,7 +94,7 @@ class ConnectedThread extends BaseThread {
         super.cancel();
 
         try {
-            babeefoneService.getBluetoothSocket().close();
+            mainService.getBluetoothSocket().close();
             synchronized (PLAYER_LOCK) {
                 audioTrack.stop();
                 audioTrack.release();

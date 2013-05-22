@@ -9,13 +9,13 @@ class RecordThread extends BaseThread {
     private AudioRecord audioRecord;
     private int inBufferSize;
 
-    public RecordThread(BabeefoneService babeefoneService) {
-        super(babeefoneService);
-        inBufferSize = AudioRecord.getMinBufferSize(BabeefoneService.SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, BabeefoneService.AUDIO_FORMAT);
+    public RecordThread(MainService mainService) {
+        super(mainService);
+        inBufferSize = AudioRecord.getMinBufferSize(MainService.SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, MainService.AUDIO_FORMAT);
         audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC,
-                BabeefoneService.SAMPLE_RATE,
+                MainService.SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
-                BabeefoneService.AUDIO_FORMAT,
+                MainService.AUDIO_FORMAT,
                 inBufferSize);
     }
 
@@ -34,7 +34,7 @@ class RecordThread extends BaseThread {
                 dataPacket.type = DataPacket.TYPE_AUDIO_DATA;
                 dataPacket.audioData = bf;
 
-                babeefoneService.send(dataPacket);
+                mainService.send(dataPacket);
             }
         }
     }

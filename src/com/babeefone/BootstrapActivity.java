@@ -2,11 +2,10 @@ package com.babeefone;
 
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
-import android.content.Intent;
+import android.content.*;
 import android.media.AudioManager;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Message;
+import android.os.IBinder;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.Window;
@@ -14,18 +13,14 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/**
- * This is the main Activity that displays the current chat session.
- */
 public class BootstrapActivity extends Activity {
     public static final int MESSAGE_STATE_CHANGE = 0;
     public static final int MESSAGE_MODE = 1;
     public static final int MESSAGE_DEVICE_NAME = 2;
-    public static final int MESSAGE_TOAST = 3;
 
     public static final String DEVICE_NAME = "device_name";
-    public static final String TOAST = "toast";
     public static final String MODE = "mode";
+    public static final String STATE = "state";
 
     private static final int REQUEST_ENABLE_BT = 0;
 
@@ -35,12 +30,16 @@ public class BootstrapActivity extends Activity {
 
     private String connectedDeviceName = null;
     private BluetoothAdapter bluetoothAdapter = null;
-    private BabeefoneService babeefoneService = null;
+    private MainService mainService = null;
+
+    Intent serviceIntent;
 
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        serviceIntent = new Intent(this, MainService.class);
 
         requestWindowFeature(Window.FEATURE_CUSTOM_TITLE);
         setContentView(R.layout.main);
@@ -53,7 +52,7 @@ public class BootstrapActivity extends Activity {
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
         if (bluetoothAdapter == null) {
-            Toast.makeText(this, "Bluetooth is not available", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.bt_not_available, Toast.LENGTH_LONG).show();
             finish();
             return;
         }
@@ -65,40 +64,42 @@ public class BootstrapActivity extends Activity {
     public void onStart() {
         super.onStart();
 
+        registerReceiver(broadcastReceiver, new IntentFilter(MainService.BROADCAST_ACTION));
+
+        bindService(serviceIntent, serviceConnection, 0);
+
         if (!bluetoothAdapter.isEnabled()) {
             Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             startActivityForResult(enableIntent, REQUEST_ENABLE_BT);
         } else {
-            if (babeefoneService == null) {
-                setupChat();
+            if (!MainService.isStarted) {
+                initialize();
             }
         }
     }
 
     @Override
-    public synchronized void onResume() {
-        super.onResume();
+    public void onStop() {
+        super.onStop();
 
-        if (babeefoneService != null) {
-            if (babeefoneService.getState() == BabeefoneService.STATE_NONE) {
-                babeefoneService.start();
-            }
-        }
+        unbindService(serviceConnection);
+
+        unregisterReceiver(broadcastReceiver);
     }
 
-    private void setupChat() {
+    private void initialize() {
         modeButton = (Button) findViewById(R.id.parent);
         modeButton.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
-                babeefoneService.setMode(babeefoneService.getMode() == BabeefoneService.MODE_PARENT ? BabeefoneService.MODE_BABY : BabeefoneService.MODE_PARENT);
-                babeefoneService.setConnectedDeviceMode();
+                mainService.setMode(mainService.getMode() == MainService.MODE_PARENT ? MainService.MODE_BABY : MainService.MODE_PARENT);
+                mainService.setConnectedDeviceMode();
             }
         });
 
         exitButton = (Button) findViewById(R.id.exit);
         exitButton.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
-                babeefoneService.stop();
+                stopService(serviceIntent);
                 Intent intent = new Intent(Intent.ACTION_MAIN);
                 intent.addCategory(Intent.CATEGORY_HOME);
                 intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -107,62 +108,67 @@ public class BootstrapActivity extends Activity {
             }
         });
 
-        babeefoneService = new BabeefoneService(this, mHandler);
+        startService(serviceIntent);
     }
 
-    // The Handler that gets information back from the BabeefoneService
-    private final Handler mHandler = new Handler() {
+    private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
-        public void handleMessage(Message msg) {
-            switch (msg.what) {
+        public void onReceive(Context context, Intent intent) {
+            int type = intent.getIntExtra("type", 0);
+            Bundle bundle = intent.getBundleExtra("data");
+            switch (type) {
                 case MESSAGE_STATE_CHANGE:
-                    switch (msg.arg1) {
-                        case BabeefoneService.STATE_CONNECTED:
+                    switch (bundle.getInt(STATE)) {
+                        case MainService.STATE_CONNECTED:
                             mTitle.setText(R.string.title_connected_to);
                             mTitle.append(connectedDeviceName);
                             break;
-                        case BabeefoneService.STATE_CONNECTING:
+                        case MainService.STATE_CONNECTING:
                             mTitle.setText(R.string.title_connecting);
                             break;
-                        case BabeefoneService.STATE_LISTEN:
-                        case BabeefoneService.STATE_NONE:
+                        case MainService.STATE_LISTEN:
+                        case MainService.STATE_NONE:
                             mTitle.setText(R.string.title_not_connected);
                             break;
                     }
                     break;
                 case MESSAGE_DEVICE_NAME:
-                    connectedDeviceName = msg.getData().getString(DEVICE_NAME);
+                    connectedDeviceName = bundle.getString(DEVICE_NAME);
                     Toast.makeText(getApplicationContext(), "Connected to " + connectedDeviceName, Toast.LENGTH_SHORT).show();
                     break;
-                case MESSAGE_TOAST:
-                    Toast.makeText(getApplicationContext(), msg.getData().getString(TOAST), Toast.LENGTH_SHORT).show();
-                    break;
                 case MESSAGE_MODE:
-                    int mode = msg.getData().getInt(MODE);
-                    if (mode == BabeefoneService.MODE_BABY) {
+                    int mode = bundle.getInt(MODE);
+                    if (mode == MainService.MODE_BABY) {
                         modeButton.setText(R.string.parent);
                     } else {
                         modeButton.setText(R.string.baby);
                     }
+                    break;
             }
+
+        }
+    };
+
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            mainService = ((ServiceBinder) service).getService();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            // do nothing
         }
     };
 
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        switch (requestCode) {
-            case REQUEST_ENABLE_BT:
-                if (resultCode == Activity.RESULT_OK) {
-                    setupChat();
-                } else {
-                    Toast.makeText(this, R.string.bt_not_enabled_leaving, Toast.LENGTH_SHORT).show();
-                    finish();
-                }
+        if (requestCode == REQUEST_ENABLE_BT) {
+            if (resultCode == Activity.RESULT_OK) {
+                initialize();
+            } else {
+                Toast.makeText(this, R.string.bt_not_enabled_leaving, Toast.LENGTH_SHORT).show();
+                finish();
+            }
         }
     }
-
-	/*private void connectDevice(Intent data*//*, boolean secure*//*) {
-        String address = data.getExtras().getString(DeviceListActivity.EXTRA_DEVICE_ADDRESS);
-		BluetoothDevice device = bluetoothAdapter.getRemoteDevice(address);
-		babeefoneService.connect(device*//*, secure*//*);
-	}*/
 }
