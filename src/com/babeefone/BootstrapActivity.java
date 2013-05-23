@@ -15,20 +15,14 @@ import android.widget.Toast;
 
 public class BootstrapActivity extends Activity {
     public static final int MESSAGE_STATE_CHANGE = 0;
-    public static final int MESSAGE_MODE = 1;
-    public static final int MESSAGE_DEVICE_NAME = 2;
-
-    public static final String DEVICE_NAME = "device_name";
-    public static final String MODE = "mode";
-    public static final String STATE = "state";
+    public static final int MESSAGE_MODE_CHANGE = 1;
 
     private static final int REQUEST_ENABLE_BT = 0;
 
-    private TextView mTitle;
+    private TextView title;
     private Button modeButton;
     private Button exitButton;
 
-    private String connectedDeviceName = null;
     private BluetoothAdapter bluetoothAdapter = null;
     private MainService mainService = null;
 
@@ -45,9 +39,9 @@ public class BootstrapActivity extends Activity {
         setContentView(R.layout.main);
         getWindow().setFeatureInt(Window.FEATURE_CUSTOM_TITLE, R.layout.custom_title);
 
-        mTitle = (TextView) findViewById(R.id.title_left_text);
-        mTitle.setText(R.string.app_name);
-        mTitle = (TextView) findViewById(R.id.title_right_text);
+        title = (TextView) findViewById(R.id.title_left_text);
+        title.setText(R.string.app_name);
+        title = (TextView) findViewById(R.id.title_right_text);
 
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
@@ -72,9 +66,7 @@ public class BootstrapActivity extends Activity {
             Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             startActivityForResult(enableIntent, REQUEST_ENABLE_BT);
         } else {
-            if (!MainService.isStarted) {
-                initialize();
-            }
+            initialize();
         }
     }
 
@@ -88,6 +80,10 @@ public class BootstrapActivity extends Activity {
     }
 
     private void initialize() {
+        if (!MainService.isStarted) {
+            startService(serviceIntent);
+        }
+
         modeButton = (Button) findViewById(R.id.parent);
         modeButton.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
@@ -107,52 +103,55 @@ public class BootstrapActivity extends Activity {
                 finish();
             }
         });
-
-        startService(serviceIntent);
     }
 
     private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             int type = intent.getIntExtra("type", 0);
-            Bundle bundle = intent.getBundleExtra("data");
             switch (type) {
                 case MESSAGE_STATE_CHANGE:
-                    switch (bundle.getInt(STATE)) {
-                        case MainService.STATE_CONNECTED:
-                            mTitle.setText(R.string.title_connected_to);
-                            mTitle.append(connectedDeviceName);
-                            break;
-                        case MainService.STATE_CONNECTING:
-                            mTitle.setText(R.string.title_connecting);
-                            break;
-                        case MainService.STATE_LISTEN:
-                        case MainService.STATE_NONE:
-                            mTitle.setText(R.string.title_not_connected);
-                            break;
-                    }
+                    updateState();
                     break;
-                case MESSAGE_DEVICE_NAME:
-                    connectedDeviceName = bundle.getString(DEVICE_NAME);
-                    Toast.makeText(getApplicationContext(), "Connected to " + connectedDeviceName, Toast.LENGTH_SHORT).show();
-                    break;
-                case MESSAGE_MODE:
-                    int mode = bundle.getInt(MODE);
-                    if (mode == MainService.MODE_BABY) {
-                        modeButton.setText(R.string.parent);
-                    } else {
-                        modeButton.setText(R.string.baby);
-                    }
+                case MESSAGE_MODE_CHANGE:
+                    updateMode();
                     break;
             }
 
         }
     };
 
+    private void updateMode() {
+        if (mainService.getMode() == MainService.MODE_BABY) {
+            modeButton.setText(R.string.parent);
+        } else {
+            modeButton.setText(R.string.baby);
+        }
+    }
+
+    private void updateState() {
+        switch (mainService.getState()) {
+            case MainService.STATE_CONNECTED:
+                title.setText(R.string.title_connected_to);
+                title.append(mainService.getConnectedDevice().getName());
+                Toast.makeText(getApplicationContext(), "Connected to " + mainService.getConnectedDevice().getName(), Toast.LENGTH_SHORT).show();
+                break;
+            case MainService.STATE_CONNECTING:
+                title.setText(R.string.title_connecting);
+                break;
+            case MainService.STATE_LISTEN:
+            case MainService.STATE_NONE:
+                title.setText(R.string.title_not_connected);
+                break;
+        }
+    }
+
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             mainService = ((ServiceBinder) service).getService();
+            updateState();
+            updateMode();
         }
 
         @Override

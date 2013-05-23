@@ -1,5 +1,7 @@
 package com.babeefone;
 
+import android.app.Notification;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -7,8 +9,8 @@ import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.media.AudioFormat;
-import android.os.Bundle;
 import android.os.IBinder;
+import android.support.v4.app.NotificationCompat;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -19,6 +21,8 @@ import java.util.UUID;
 public class MainService extends Service {
     protected static final String NAME = "Babeefone";
     protected static final UUID MY_UUID = UUID.fromString("53735fb0-b328-11e2-9e96-0800200c9a66");
+
+    private static final String PREFERENCES_NAME = "Babeefone";
 
     protected static final int SAMPLE_RATE = 44100;
     protected static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
@@ -43,9 +47,8 @@ public class MainService extends Service {
 
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothSocket bluetoothSocket;
+    private BluetoothDevice connectedDevice;
     private ObjectOutputStream objectOutputStream;
-
-    private static final String PREFERENCES_NAME = "Babeefone";
 
     public static boolean isStarted = false;
 
@@ -66,6 +69,18 @@ public class MainService extends Service {
 
         disconnected();
 
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, new Intent(this, BootstrapActivity.class), 0);
+        Notification notification = new NotificationCompat.Builder(this)
+                .setContentTitle("Title")
+                .setContentText("Text")
+                .setSmallIcon(R.drawable.app_icon)
+                .setContentIntent(pendingIntent)
+                .setOngoing(true)
+                .setTicker("Running in the Foreground")
+                .build();
+
+        startForeground(1, notification);
+
         return START_STICKY;
     }
 
@@ -76,14 +91,15 @@ public class MainService extends Service {
 
     @Override
     public void onDestroy() {
+        super.onDestroy();
+
+        stopForeground(true);
+
         isStarted = false;
 
         cancelRecordThread();
-
         cancelConnectThreads();
-
         cancelConnectedThread();
-
         cancelAcceptThread();
 
         try {
@@ -99,9 +115,7 @@ public class MainService extends Service {
     private synchronized void setState(int state) {
         this.state = state;
 
-        Bundle bundle = new Bundle();
-        bundle.putInt(BootstrapActivity.STATE, state);
-        broadcast(bundle, BootstrapActivity.MESSAGE_STATE_CHANGE);
+        broadcast(BootstrapActivity.MESSAGE_STATE_CHANGE);
     }
 
     public synchronized int getState() {
@@ -114,6 +128,10 @@ public class MainService extends Service {
 
     protected BluetoothSocket getBluetoothSocket() {
         return bluetoothSocket;
+    }
+
+    protected BluetoothDevice getConnectedDevice() {
+        return connectedDevice;
     }
 
     public synchronized void setMode(int mode) {
@@ -131,9 +149,7 @@ public class MainService extends Service {
                 throw (new IllegalArgumentException("Unknown mode"));
         }
 
-        Bundle bundle = new Bundle();
-        bundle.putInt(BootstrapActivity.MODE, mode);
-        broadcast(bundle, BootstrapActivity.MESSAGE_MODE);
+        broadcast(BootstrapActivity.MESSAGE_MODE_CHANGE);
 
         this.mode = mode;
 
@@ -146,10 +162,9 @@ public class MainService extends Service {
         return mode;
     }
 
-    private void broadcast(Bundle bundle, int type) {
+    private void broadcast(int type) {
         Intent intent = new Intent(BROADCAST_ACTION);
         intent.putExtra("type", type);
-        intent.putExtra("data", bundle);
         intent.setPackage(getPackageName());
         sendBroadcast(intent);
     }
@@ -238,9 +253,7 @@ public class MainService extends Service {
             connectedThread = new ConnectedThread(this);
             connectedThread.start();
 
-            Bundle bundle = new Bundle();
-            bundle.putString(BootstrapActivity.DEVICE_NAME, device.getName());
-            broadcast(bundle, BootstrapActivity.MESSAGE_DEVICE_NAME);
+            connectedDevice = device;
 
             setState(STATE_CONNECTED);
         }
@@ -261,5 +274,4 @@ public class MainService extends Service {
             acceptThread.start();
         }
     }
-
 }
