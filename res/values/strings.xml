@@ -20,7 +20,9 @@
     <string name="select_device">select a device to connect</string>
     <string name="none_paired">No devices have been paired</string>
     <string name="none_found">No devices found</string>
-    <string name="title_paired_devices">Paired Devices</string>
-    <string name="title_other_devices">Other Available Devices</string>
-    <string name="button_scan">Scan for devices</string>
+    <string name="title_paired_devices">PAIRED DEVICES</string>
+    <string name="title_available_devices">AVAILABLE DEVICES</string>
+    <string name="button_scan">SCAN FOR DEVICES</string>
+
+    <string name="empty">Nothing to show</string><string name="connect_button">Connect</string><string name="home_button">Home</string>
 </resources>

@@ -6,27 +6,26 @@ import android.content.*;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.view.View;
-import android.view.View.OnClickListener;
+import android.support.v4.app.FragmentActivity;
+import android.support.v4.app.FragmentTransaction;
 import android.view.Window;
-import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
-public class BootstrapActivity extends Activity {
+public class BootstrapActivity extends FragmentActivity {
     public static final int MESSAGE_STATE_CHANGE = 0;
     public static final int MESSAGE_MODE_CHANGE = 1;
 
     private static final int REQUEST_ENABLE_BT = 0;
 
     private TextView title;
-    private Button modeButton;
-    private Button exitButton;
 
     private BluetoothAdapter bluetoothAdapter = null;
     private MainService mainService = null;
+    private Intent serviceIntent;
 
-    Intent serviceIntent;
+    private HomeFragment homeFragment;
+    private DeviceListFragment deviceListFragment;
 
 
     @Override
@@ -38,6 +37,9 @@ public class BootstrapActivity extends Activity {
         requestWindowFeature(Window.FEATURE_CUSTOM_TITLE);
         setContentView(R.layout.main);
         getWindow().setFeatureInt(Window.FEATURE_CUSTOM_TITLE, R.layout.custom_title);
+
+        homeFragment = new HomeFragment();
+        deviceListFragment = new DeviceListFragment();
 
         title = (TextView) findViewById(R.id.title_left_text);
         title.setText(R.string.app_name);
@@ -80,29 +82,18 @@ public class BootstrapActivity extends Activity {
     }
 
     private void initialize() {
-        if (!MainService.isStarted) {
+        if (!MainService.started) {
             startService(serviceIntent);
         }
+    }
 
-        modeButton = (Button) findViewById(R.id.parent);
-        modeButton.setOnClickListener(new OnClickListener() {
-            public void onClick(View v) {
-                mainService.setMode(mainService.getMode() == MainService.MODE_PARENT ? MainService.MODE_BABY : MainService.MODE_PARENT);
-                mainService.setConnectedDeviceMode();
-            }
-        });
-
-        exitButton = (Button) findViewById(R.id.exit);
-        exitButton.setOnClickListener(new OnClickListener() {
-            public void onClick(View v) {
-                stopService(serviceIntent);
-                Intent intent = new Intent(Intent.ACTION_MAIN);
-                intent.addCategory(Intent.CATEGORY_HOME);
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(intent);
-                finish();
-            }
-        });
+    public void exit() {
+        stopService(serviceIntent);
+        Intent intent = new Intent(Intent.ACTION_MAIN);
+        intent.addCategory(Intent.CATEGORY_HOME);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        startActivity(intent);
+        finish();
     }
 
     private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
@@ -113,27 +104,15 @@ public class BootstrapActivity extends Activity {
                 case MESSAGE_STATE_CHANGE:
                     updateState();
                     break;
-                case MESSAGE_MODE_CHANGE:
-                    updateMode();
-                    break;
             }
-
         }
     };
-
-    private void updateMode() {
-        if (mainService.getMode() == MainService.MODE_BABY) {
-            modeButton.setText(R.string.parent);
-        } else {
-            modeButton.setText(R.string.baby);
-        }
-    }
 
     private void updateState() {
         switch (mainService.getState()) {
             case MainService.STATE_CONNECTED:
                 title.setText(R.string.title_connected_to);
-                title.append(mainService.getConnectedDevice().getName());
+                title.append(mainService.getConnectedDevice().getAddress());
                 Toast.makeText(getApplicationContext(), "Connected to " + mainService.getConnectedDevice().getName(), Toast.LENGTH_SHORT).show();
                 break;
             case MainService.STATE_CONNECTING:
@@ -150,8 +129,8 @@ public class BootstrapActivity extends Activity {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             mainService = ((ServiceBinder) service).getService();
+            goHome();
             updateState();
-            updateMode();
         }
 
         @Override
@@ -169,5 +148,21 @@ public class BootstrapActivity extends Activity {
                 finish();
             }
         }
+    }
+
+    public MainService getMainService() {
+        return mainService;
+    }
+
+    public void goHome() {
+        FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
+        transaction.replace(R.id.fragment_container, homeFragment);
+        transaction.commit();
+    }
+
+    public void goDevices() {
+        FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
+        transaction.replace(R.id.fragment_container, deviceListFragment);
+        transaction.commit();
     }
 }

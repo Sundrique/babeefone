@@ -6,9 +6,11 @@ import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
-import android.content.Intent;
-import android.content.SharedPreferences;
+import android.content.*;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
 import android.media.AudioFormat;
+import android.os.Handler;
 import android.os.IBinder;
 import android.support.v4.app.NotificationCompat;
 
@@ -20,7 +22,7 @@ import java.util.UUID;
 
 public class MainService extends Service {
     protected static final String NAME = "Babeefone";
-    protected static final UUID MY_UUID = UUID.fromString("53735fb0-b328-11e2-9e96-0800200c9a66");
+    protected static final UUID BABEEFONE_UUID = UUID.fromString("53735fb0-b328-11e2-9e96-0800200c9a66");
 
     private static final String PREFERENCES_NAME = "Babeefone";
 
@@ -32,42 +34,57 @@ public class MainService extends Service {
     public static final int STATE_CONNECTING = 2; // now initiating an outgoing connection
     public static final int STATE_CONNECTED = 3;  // now connected to a remote device
 
+    private static final int CONNECTING_PAIRED = 0;
+    private static final int CONNECTING_STORED = 1;
+    private static final int CONNECTING_AVAILABLE = 2;
+
     public static final int MODE_PARENT = 0;
     public static final int MODE_BABY = 1;
 
     public static final String BROADCAST_ACTION = "com.babeefone.MainService";
 
+    private static final long DISCOVERY_DURATION = 7000;
+
     private int state = STATE_NONE;
     private int mode = MODE_PARENT;
+    private int connecting;
+
+    private final Handler handler = new Handler();
 
     private AcceptThread acceptThread;
     private ConnectedThread connectedThread;
     private RecordThread recordThread;
     private ArrayList<ConnectThread> connectThreads = new ArrayList<ConnectThread>();
+    private ArrayList<BluetoothDevice> availableDevices = new ArrayList<BluetoothDevice>();
 
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothSocket bluetoothSocket;
     private BluetoothDevice connectedDevice;
     private ObjectOutputStream objectOutputStream;
 
-    public static boolean isStarted = false;
+    public static boolean started = false;
 
     @Override
     public void onCreate() {
         super.onCreate();
+
+        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+        registerReceiver(broadcastReceiver, filter);
+
+        filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+        registerReceiver(broadcastReceiver, filter);
+
+        filter = new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+        registerReceiver(broadcastReceiver, filter);
 
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        isStarted = true;
+        started = true;
 
-        SharedPreferences settings = getSharedPreferences(PREFERENCES_NAME, 0);
-        int settingsMode = settings.getInt("mode", MODE_PARENT);
-        setMode(settingsMode);
-
-        disconnected();
+        initialize();
 
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, new Intent(this, BootstrapActivity.class), 0);
         Notification notification = new NotificationCompat.Builder(this)
@@ -95,12 +112,16 @@ public class MainService extends Service {
 
         stopForeground(true);
 
-        isStarted = false;
+        started = false;
 
         cancelRecordThread();
         cancelConnectThreads();
-        cancelConnectedThread();
+        disconnect();
         cancelAcceptThread();
+
+        unregisterReceiver(broadcastReceiver);
+
+        bluetoothAdapter.cancelDiscovery();
 
         try {
             if (objectOutputStream != null) {
@@ -112,10 +133,20 @@ public class MainService extends Service {
     }
 
 
-    private synchronized void setState(int state) {
-        this.state = state;
+    public void initialize() {
+        SharedPreferences settings = getSharedPreferences(PREFERENCES_NAME, 0);
+        int settingsMode = settings.getInt("mode", MODE_PARENT);
+        setMode(settingsMode);
 
-        broadcast(BootstrapActivity.MESSAGE_STATE_CHANGE);
+        disconnected();
+    }
+
+    private synchronized void setState(int state) {
+        if (state != this.state) {
+            this.state = state;
+
+            broadcast(BootstrapActivity.MESSAGE_STATE_CHANGE);
+        }
     }
 
     public synchronized int getState() {
@@ -198,7 +229,11 @@ public class MainService extends Service {
         }
     }
 
-    private void cancelConnectedThread() {
+    protected void disconnect() {
+        setState(STATE_NONE);
+
+        connectedDevice = null;
+
         if (connectedThread != null) {
             connectedThread.cancel();
             connectedThread = null;
@@ -225,24 +260,38 @@ public class MainService extends Service {
         connectThreads.remove(thread);
         if (connectThreads.size() == 0) {
             if (state != STATE_CONNECTED) {
-                setState(STATE_LISTEN);
+                if (connecting == CONNECTING_PAIRED) {
+                    connectStored();
+                } else if (connecting == CONNECTING_STORED) {
+                    connectAvailable();
+                } else {
+                    connectPaired();
+                }
             }
         }
     }
 
     protected void connectionLost() {
-        cancelConnectedThread();
+        disconnect();
 
         disconnected();
     }
 
     public synchronized void connected(BluetoothSocket socket, BluetoothDevice device) {
         if (state != STATE_CONNECTED) {
+            bluetoothSocket = socket;
+
+            connectedDevice = device;
+
+            setState(STATE_CONNECTED);
+
             cancelConnectThreads();
 
             cancelAcceptThread();
 
-            this.bluetoothSocket = socket;
+            bluetoothAdapter.cancelDiscovery();
+
+            storeDevice(device);
 
             try {
                 objectOutputStream = new ObjectOutputStream(new BufferedOutputStream(bluetoothSocket.getOutputStream()));
@@ -252,26 +301,115 @@ public class MainService extends Service {
 
             connectedThread = new ConnectedThread(this);
             connectedThread.start();
-
-            connectedDevice = device;
-
-            setState(STATE_CONNECTED);
         }
     }
 
-    private synchronized void disconnected() {
+    public synchronized void connect(BluetoothDevice bluetoothDevice) {
         setState(STATE_CONNECTING);
 
-        ConnectThread connectThread;
-        for (BluetoothDevice bluetoothDevice : bluetoothAdapter.getBondedDevices()) {
-            connectThread = new ConnectThread(this, bluetoothDevice);
-            connectThread.start();
-            connectThreads.add(connectThread);
-        }
+        ConnectThread connectThread = new ConnectThread(this, bluetoothDevice);
+        connectThread.start();
+        connectThreads.add(connectThread);
+    }
+
+    private synchronized void disconnected() {
+        connectPaired();
 
         if (acceptThread == null) {
             acceptThread = new AcceptThread(this);
             acceptThread.start();
         }
     }
+
+    private synchronized void connectPaired() {
+        if (state != STATE_CONNECTED) {
+            connecting = CONNECTING_PAIRED;
+            if (bluetoothAdapter.getBondedDevices().size() > 0) {
+                for (BluetoothDevice bluetoothDevice : bluetoothAdapter.getBondedDevices()) {
+                    connect(bluetoothDevice);
+                }
+            } else {
+                connectStored();
+            }
+        }
+    }
+
+    private synchronized void connectStored() {
+        if (state != STATE_CONNECTED) {
+            connecting = CONNECTING_STORED;
+            SQLiteDatabase db = new DbOpenHelper(this).getWritableDatabase();
+            Cursor cursor = db.query(
+                    true,
+                    "devices",
+                    new String[]{"address"},
+                    null, null, null, null, null, null
+            );
+            if (cursor.getCount() > 0) {
+                cursor.moveToFirst();
+                while (cursor.isAfterLast() == false) {
+                    String address = cursor.getString(cursor.getColumnIndex("address"));
+                    connect(bluetoothAdapter.getRemoteDevice(address));
+                    cursor.moveToNext();
+                }
+            } else {
+                connectAvailable();
+            }
+        }
+    }
+
+    private synchronized void connectAvailable() {
+        if (state != STATE_CONNECTED) {
+            connecting = CONNECTING_AVAILABLE;
+            availableDevices.clear();
+            bluetoothAdapter.startDiscovery();
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (bluetoothAdapter.isDiscovering()) {
+                        bluetoothAdapter.cancelDiscovery();
+                    }
+                }
+            }, DISCOVERY_DURATION);
+        }
+    }
+
+    private void storeDevice(BluetoothDevice device) {
+        SQLiteDatabase db = new DbOpenHelper(this).getWritableDatabase();
+        Cursor cursor = db.query(
+                true,
+                "devices",
+                new String[]{"address"},
+                "address = \"" + device.getAddress() + "\"",
+                null, null, null, null, null
+        );
+        if (cursor.getCount() == 0) {
+            ContentValues contentValues = new ContentValues();
+            contentValues.put("address", device.getAddress());
+            db.insert("devices", null, contentValues);
+        }
+    }
+
+    private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+
+            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                if (device.getBondState() != BluetoothDevice.BOND_BONDED) {
+                    availableDevices.add(device);
+                }
+            } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                if (state != STATE_CONNECTED) {
+                    if (availableDevices.size() > 0) {
+                        for (BluetoothDevice bluetoothDevice : availableDevices) {
+                            connect(bluetoothDevice);
+                        }
+                    } else {
+                        connectPaired();
+                    }
+                }
+            }
+        }
+    };
 }

@@ -1,56 +1,64 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright (C) 2009 The Android Open Source Project
 
-     Licensed under the Apache License, Version 2.0 (the "License");
-     you may not use this file except in compliance with the License.
-     You may obtain a copy of the License at
-
-          http://www.apache.org/licenses/LICENSE-2.0
-
-     Unless required by applicable law or agreed to in writing, software
-     distributed under the License is distributed on an "AS IS" BASIS,
-     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-     See the License for the specific language governing permissions and
-     limitations under the License.
--->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    >
-    <TextView android:id="@+id/title_paired_devices"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/title_paired_devices"
-        android:visibility="gone"
-        android:background="#666"
-        android:textColor="#fff"
-        android:paddingLeft="5dp"
-    />
-    <ListView android:id="@+id/paired_devices"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:stackFromBottom="true"
-        android:layout_weight="1"
-    />
-    <TextView android:id="@+id/title_new_devices"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/title_other_devices"
-        android:visibility="gone"
-        android:background="#666"
-        android:textColor="#fff"
-        android:paddingLeft="5dp"
-    />
-    <ListView android:id="@+id/new_devices"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:stackFromBottom="true"
-        android:layout_weight="2"
-    />
-    <Button android:id="@+id/button_scan"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/button_scan"
-    />
+              android:orientation="vertical"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent">
+
+    <LinearLayout
+            android:orientation="vertical"
+            android:layout_width="fill_parent"
+            android:layout_height="0dp" android:layout_weight="1">
+        <TextView
+                android:layout_width="fill_parent"
+                android:layout_height="20dp"
+                android:text="@string/title_paired_devices"
+                android:id="@+id/pairedDevicesTitle"/>
+        <View
+                android:layout_width="fill_parent"
+                android:layout_height="1dp"
+                android:background="@android:color/darker_gray"/>
+        <ListView
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/pairedDevicesList" android:layout_gravity="center"/>
+        <ScrollView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/scrollView"/>
+        <LinearLayout
+                android:orientation="horizontal"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content">
+            <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="20dp"
+                    android:text="@string/title_available_devices"
+                    android:id="@+id/availableDevicesTitle" android:layout_weight="1"/>
+            <ProgressBar
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:id="@+id/scanProgress" android:layout_gravity="center_horizontal|top"
+                    android:visibility="visible" android:indeterminate="false"/>
+        </LinearLayout>
+        <View
+                android:layout_width="fill_parent"
+                android:layout_height="1dp"
+                android:background="@android:color/darker_gray"/>
+        <ListView
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:id="@+id/availableDevicesList" android:layout_gravity="center"
+                />
+    </LinearLayout>
+    <Button
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/button_scan"
+            android:id="@+id/scanButton"/>
+    <Button
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/home_button"
+            android:id="@+id/homeButton"/>
 </LinearLayout>

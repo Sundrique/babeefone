@@ -15,11 +15,10 @@ class ConnectThread extends BaseThread {
     }
 
     public void run() {
-        mainService.getBluetoothAdapter().cancelDiscovery();
         BluetoothSocket bluetoothSocket = null;
 
         try {
-            bluetoothSocket = device.createRfcommSocketToServiceRecord(MainService.MY_UUID);
+            bluetoothSocket = device.createInsecureRfcommSocketToServiceRecord(MainService.BABEEFONE_UUID);
             bluetoothSocket.connect();
             if (!canceled) {
                 mainService.connected(bluetoothSocket, device);

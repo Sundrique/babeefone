@@ -2,6 +2,7 @@ package com.babeefone;
 
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
+import android.util.Log;
 
 import java.io.IOException;
 
@@ -12,7 +13,9 @@ class AcceptThread extends BaseThread {
         super(mainService);
 
         try {
-            bluetoothServerSocket = mainService.getBluetoothAdapter().listenUsingRfcommWithServiceRecord(MainService.NAME, MainService.MY_UUID);
+            bluetoothServerSocket = mainService
+                    .getBluetoothAdapter()
+                    .listenUsingInsecureRfcommWithServiceRecord(MainService.NAME, MainService.BABEEFONE_UUID);
         } catch (IOException e) {
             // todo log exception
         }
