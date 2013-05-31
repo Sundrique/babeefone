@@ -34,10 +34,5 @@
                 android:layout_height="wrap_content"
                 android:text="@string/exit"
                 android:id="@+id/exit"/>
-        <Button
-                android:layout_width="fill_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/connect_button"
-                android:id="@+id/connectButton" android:layout_gravity="center"/>
     </LinearLayout>
 </LinearLayout>

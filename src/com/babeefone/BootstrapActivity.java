@@ -24,8 +24,8 @@ public class BootstrapActivity extends FragmentActivity {
     private MainService mainService = null;
     private Intent serviceIntent;
 
-    private HomeFragment homeFragment;
-    private DeviceListFragment deviceListFragment;
+    //private HomeFragment homeFragment;
+    //private DeviceListFragment deviceListFragment;
 
 
     @Override
@@ -38,8 +38,8 @@ public class BootstrapActivity extends FragmentActivity {
         setContentView(R.layout.main);
         getWindow().setFeatureInt(Window.FEATURE_CUSTOM_TITLE, R.layout.custom_title);
 
-        homeFragment = new HomeFragment();
-        deviceListFragment = new DeviceListFragment();
+        //homeFragment = new HomeFragment();
+        //deviceListFragment = new DeviceListFragment();
 
         title = (TextView) findViewById(R.id.title_left_text);
         title.setText(R.string.app_name);
@@ -129,7 +129,7 @@ public class BootstrapActivity extends FragmentActivity {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             mainService = ((ServiceBinder) service).getService();
-            goHome();
+            //goHome();
             updateState();
         }
 
@@ -154,7 +154,7 @@ public class BootstrapActivity extends FragmentActivity {
         return mainService;
     }
 
-    public void goHome() {
+    /*public void goHome() {
         FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
         transaction.replace(R.id.fragment_container, homeFragment);
         transaction.commit();
@@ -164,5 +164,5 @@ public class BootstrapActivity extends FragmentActivity {
         FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
         transaction.replace(R.id.fragment_container, deviceListFragment);
         transaction.commit();
-    }
+    }*/
 }
