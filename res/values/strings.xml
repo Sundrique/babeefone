@@ -8,21 +8,8 @@
     <string name="bt_not_available">Bluetooth is not available</string>
     <string name="bt_not_enabled_leaving">Bluetooth was not enabled. Leaving Babeefone.</string>
     <string name="title_connecting">connecting...</string>
-    <string name="title_connected_to">connected:</string>
-    <string name="title_not_connected">not connected</string>
+    <string name="title_connected">connected</string>
     <string name="parent">Parent</string>
     <string name="baby">Baby</string>
     <string name="exit">Exit</string>
-    <string name="connection_lost">Device connection was lost</string>
-
-    <!--  DeviceListActivity -->
-    <string name="scanning">scanning for devices...</string>
-    <string name="select_device">select a device to connect</string>
-    <string name="none_paired">No devices have been paired</string>
-    <string name="none_found">No devices found</string>
-    <string name="title_paired_devices">PAIRED DEVICES</string>
-    <string name="title_available_devices">AVAILABLE DEVICES</string>
-    <string name="button_scan">SCAN FOR DEVICES</string>
-
-    <string name="empty">Nothing to show</string><string name="connect_button">Connect</string><string name="home_button">Home</string>
 </resources>

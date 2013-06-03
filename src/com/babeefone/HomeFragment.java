@@ -33,21 +33,12 @@ public class HomeFragment extends Fragment {
             }
         });
 
-        //updateMode();
-
         Button exitButton = (Button) getActivity().findViewById(R.id.exit);
         exitButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
                 ((BootstrapActivity) getActivity()).exit();
             }
         });
-
-        /*Button connectButton = (Button) getActivity().findViewById(R.id.connectButton);
-        connectButton.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                ((BootstrapActivity) getActivity()).goDevices();
-            }
-        });*/
 
         getActivity().registerReceiver(broadcastReceiver, new IntentFilter(MainService.BROADCAST_ACTION));
     }

@@ -24,7 +24,7 @@ class AcceptThread extends BaseThread {
     public void run() {
         BluetoothSocket socket;
 
-        while (mainService.getState() != MainService.STATE_CONNECTED && !canceled) {
+        while (!mainService.getConnected() && !canceled) {
             try {
                 socket = bluetoothServerSocket.accept();
             } catch (IOException e) {

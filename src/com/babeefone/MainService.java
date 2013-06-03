@@ -29,11 +29,6 @@ public class MainService extends Service {
     protected static final int SAMPLE_RATE = 44100;
     protected static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
 
-    public static final int STATE_NONE = 0;       // we're doing nothing
-    public static final int STATE_LISTEN = 1;     // now listening for incoming connections
-    public static final int STATE_CONNECTING = 2; // now initiating an outgoing connection
-    public static final int STATE_CONNECTED = 3;  // now connected to a remote device
-
     private static final int CONNECTING_PAIRED = 0;
     private static final int CONNECTING_STORED = 1;
     private static final int CONNECTING_AVAILABLE = 2;
@@ -45,7 +40,6 @@ public class MainService extends Service {
 
     private static final long DISCOVERY_DURATION = 7000;
 
-    private int state = STATE_NONE;
     private int mode = MODE_PARENT;
     private int connecting;
 
@@ -59,8 +53,9 @@ public class MainService extends Service {
 
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothSocket bluetoothSocket;
-    private BluetoothDevice connectedDevice;
     private ObjectOutputStream objectOutputStream;
+
+    private boolean connected = false;
 
     public static boolean started = false;
 
@@ -141,18 +136,6 @@ public class MainService extends Service {
         disconnected();
     }
 
-    private synchronized void setState(int state) {
-        if (state != this.state) {
-            this.state = state;
-
-            broadcast(BootstrapActivity.MESSAGE_STATE_CHANGE);
-        }
-    }
-
-    public synchronized int getState() {
-        return state;
-    }
-
     protected BluetoothAdapter getBluetoothAdapter() {
         return bluetoothAdapter;
     }
@@ -161,8 +144,14 @@ public class MainService extends Service {
         return bluetoothSocket;
     }
 
-    protected BluetoothDevice getConnectedDevice() {
-        return connectedDevice;
+    protected synchronized void setConnected(boolean connected) {
+        this.connected = connected;
+
+        broadcast(BootstrapActivity.MESSAGE_STATE_CHANGE);
+    }
+
+    protected boolean getConnected() {
+        return connected;
     }
 
     public synchronized void setMode(int mode) {
@@ -209,7 +198,7 @@ public class MainService extends Service {
     }
 
     public synchronized void send(Object object) {
-        if (state == STATE_CONNECTED) {
+        if (connected) {
             try {
                 if (objectOutputStream == null) {
                     objectOutputStream = new ObjectOutputStream(new BufferedOutputStream(bluetoothSocket.getOutputStream()));
@@ -230,9 +219,7 @@ public class MainService extends Service {
     }
 
     protected void disconnect() {
-        setState(STATE_NONE);
-
-        connectedDevice = null;
+        setConnected(false);
 
         if (connectedThread != null) {
             connectedThread.cancel();
@@ -259,7 +246,7 @@ public class MainService extends Service {
     protected void connectionFailed(ConnectThread thread) {
         connectThreads.remove(thread);
         if (connectThreads.size() == 0) {
-            if (state != STATE_CONNECTED) {
+            if (!connected) {
                 if (connecting == CONNECTING_PAIRED) {
                     connectStored();
                 } else if (connecting == CONNECTING_STORED) {
@@ -278,12 +265,10 @@ public class MainService extends Service {
     }
 
     public synchronized void connected(BluetoothSocket socket, BluetoothDevice device) {
-        if (state != STATE_CONNECTED) {
+        if (!connected) {
             bluetoothSocket = socket;
 
-            connectedDevice = device;
-
-            setState(STATE_CONNECTED);
+            setConnected(true);
 
             cancelConnectThreads();
 
@@ -305,8 +290,6 @@ public class MainService extends Service {
     }
 
     public synchronized void connect(BluetoothDevice bluetoothDevice) {
-        setState(STATE_CONNECTING);
-
         ConnectThread connectThread = new ConnectThread(this, bluetoothDevice);
         connectThread.start();
         connectThreads.add(connectThread);
@@ -322,7 +305,7 @@ public class MainService extends Service {
     }
 
     private synchronized void connectPaired() {
-        if (state != STATE_CONNECTED) {
+        if (!connected) {
             connecting = CONNECTING_PAIRED;
             if (bluetoothAdapter.getBondedDevices().size() > 0) {
                 for (BluetoothDevice bluetoothDevice : bluetoothAdapter.getBondedDevices()) {
@@ -335,7 +318,7 @@ public class MainService extends Service {
     }
 
     private synchronized void connectStored() {
-        if (state != STATE_CONNECTED) {
+        if (!connected) {
             connecting = CONNECTING_STORED;
             SQLiteDatabase db = new DbOpenHelper(this).getWritableDatabase();
             Cursor cursor = db.query(
@@ -358,7 +341,7 @@ public class MainService extends Service {
     }
 
     private synchronized void connectAvailable() {
-        if (state != STATE_CONNECTED) {
+        if (!connected) {
             connecting = CONNECTING_AVAILABLE;
             availableDevices.clear();
             bluetoothAdapter.startDiscovery();
@@ -400,7 +383,7 @@ public class MainService extends Service {
                     availableDevices.add(device);
                 }
             } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
-                if (state != STATE_CONNECTED) {
+                if (!connected) {
                     if (availableDevices.size() > 0) {
                         for (BluetoothDevice bluetoothDevice : availableDevices) {
                             connect(bluetoothDevice);
