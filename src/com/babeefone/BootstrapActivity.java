@@ -102,6 +102,7 @@ public class BootstrapActivity extends FragmentActivity {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             mainService = ((ServiceBinder) service).getService();
+            title.setText(mainService.getConnected() ? R.string.title_connected : R.string.title_connecting);
         }
 
         @Override

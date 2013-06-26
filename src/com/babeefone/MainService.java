@@ -10,7 +10,6 @@ import android.content.*;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.media.AudioFormat;
-import android.os.Handler;
 import android.os.IBinder;
 import android.support.v4.app.NotificationCompat;
 
@@ -18,6 +17,8 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.UUID;
 
 public class MainService extends Service {
@@ -29,27 +30,21 @@ public class MainService extends Service {
     protected static final int SAMPLE_RATE = 44100;
     protected static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
 
-    private static final int CONNECTING_PAIRED = 0;
-    private static final int CONNECTING_STORED = 1;
-    private static final int CONNECTING_AVAILABLE = 2;
-
     public static final int MODE_PARENT = 0;
     public static final int MODE_BABY = 1;
 
     public static final String BROADCAST_ACTION = "com.babeefone.MainService";
 
     private static final long DISCOVERY_DURATION = 7000;
+    private static final long DISCOVERY_PAUSE = 3000;
 
     private int mode = MODE_PARENT;
-    private int connecting;
-
-    private final Handler handler = new Handler();
 
     private AcceptThread acceptThread;
     private ConnectedThread connectedThread;
     private RecordThread recordThread;
-    private ArrayList<ConnectThread> connectThreads = new ArrayList<ConnectThread>();
-    private ArrayList<BluetoothDevice> availableDevices = new ArrayList<BluetoothDevice>();
+    private DisconnectedThread disconnectedThread;
+    private ArrayList<BluetoothDevice> knownDevices = new ArrayList<BluetoothDevice>();
 
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothSocket bluetoothSocket;
@@ -73,6 +68,27 @@ public class MainService extends Service {
         registerReceiver(broadcastReceiver, filter);
 
         bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+
+        for (BluetoothDevice bluetoothDevice : bluetoothAdapter.getBondedDevices()) {
+            knownDevices.add(bluetoothDevice);
+        }
+
+        SQLiteDatabase db = new DbOpenHelper(this).getWritableDatabase();
+        Cursor cursor = db.query(
+                true,
+                "devices",
+                new String[]{"address"},
+                null, null, null, null, null, null
+        );
+        if (cursor.getCount() > 0) {
+            cursor.moveToFirst();
+            while (cursor.isAfterLast() == false) {
+                String address = cursor.getString(cursor.getColumnIndex("address"));
+                knownDevices.add(bluetoothAdapter.getRemoteDevice(address));
+                cursor.moveToNext();
+            }
+        }
+        db.close();
     }
 
     @Override
@@ -110,7 +126,7 @@ public class MainService extends Service {
         started = false;
 
         cancelRecordThread();
-        cancelConnectThreads();
+        cancelDisconnectedThread();
         disconnect();
         cancelAcceptThread();
 
@@ -234,27 +250,10 @@ public class MainService extends Service {
         }
     }
 
-    private void cancelConnectThreads() {
-        ConnectThread connectThread;
-        while (connectThreads.size() > 0) {
-            connectThread = connectThreads.get(0);
-            connectThread.cancel();
-            connectThreads.remove(connectThread);
-        }
-    }
-
-    protected void connectionFailed(ConnectThread thread) {
-        connectThreads.remove(thread);
-        if (connectThreads.size() == 0) {
-            if (!connected) {
-                if (connecting == CONNECTING_PAIRED) {
-                    connectStored();
-                } else if (connecting == CONNECTING_STORED) {
-                    connectAvailable();
-                } else {
-                    connectPaired();
-                }
-            }
+    private void cancelDisconnectedThread() {
+        if (disconnectedThread != null) {
+            disconnectedThread.cancel();
+            disconnectedThread = null;
         }
     }
 
@@ -270,7 +269,7 @@ public class MainService extends Service {
 
             setConnected(true);
 
-            cancelConnectThreads();
+            cancelDisconnectedThread();
 
             cancelAcceptThread();
 
@@ -289,70 +288,17 @@ public class MainService extends Service {
         }
     }
 
-    public synchronized void connect(BluetoothDevice bluetoothDevice) {
-        ConnectThread connectThread = new ConnectThread(this, bluetoothDevice);
-        connectThread.start();
-        connectThreads.add(connectThread);
-    }
-
     private synchronized void disconnected() {
-        connectPaired();
+        if (disconnectedThread == null) {
+            disconnectedThread = new DisconnectedThread(this, knownDevices);
+            disconnectedThread.start();
+        }
+
+        startDiscoveryDelayed();
 
         if (acceptThread == null) {
             acceptThread = new AcceptThread(this);
             acceptThread.start();
-        }
-    }
-
-    private synchronized void connectPaired() {
-        if (!connected) {
-            connecting = CONNECTING_PAIRED;
-            if (bluetoothAdapter.getBondedDevices().size() > 0) {
-                for (BluetoothDevice bluetoothDevice : bluetoothAdapter.getBondedDevices()) {
-                    connect(bluetoothDevice);
-                }
-            } else {
-                connectStored();
-            }
-        }
-    }
-
-    private synchronized void connectStored() {
-        if (!connected) {
-            connecting = CONNECTING_STORED;
-            SQLiteDatabase db = new DbOpenHelper(this).getWritableDatabase();
-            Cursor cursor = db.query(
-                    true,
-                    "devices",
-                    new String[]{"address"},
-                    null, null, null, null, null, null
-            );
-            if (cursor.getCount() > 0) {
-                cursor.moveToFirst();
-                while (cursor.isAfterLast() == false) {
-                    String address = cursor.getString(cursor.getColumnIndex("address"));
-                    connect(bluetoothAdapter.getRemoteDevice(address));
-                    cursor.moveToNext();
-                }
-            } else {
-                connectAvailable();
-            }
-        }
-    }
-
-    private synchronized void connectAvailable() {
-        if (!connected) {
-            connecting = CONNECTING_AVAILABLE;
-            availableDevices.clear();
-            bluetoothAdapter.startDiscovery();
-            handler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    if (bluetoothAdapter.isDiscovering()) {
-                        bluetoothAdapter.cancelDiscovery();
-                    }
-                }
-            }, DISCOVERY_DURATION);
         }
     }
 
@@ -370,6 +316,7 @@ public class MainService extends Service {
             contentValues.put("address", device.getAddress());
             db.insert("devices", null, contentValues);
         }
+        db.close();
     }
 
     private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
@@ -380,19 +327,34 @@ public class MainService extends Service {
             if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 if (device.getBondState() != BluetoothDevice.BOND_BONDED) {
-                    availableDevices.add(device);
-                }
-            } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
-                if (!connected) {
-                    if (availableDevices.size() > 0) {
-                        for (BluetoothDevice bluetoothDevice : availableDevices) {
-                            connect(bluetoothDevice);
-                        }
-                    } else {
-                        connectPaired();
+                    if (disconnectedThread != null) {
+                        knownDevices.add(device);
+                        disconnectedThread.addDevice(device);
                     }
                 }
+            } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                startDiscoveryDelayed();
             }
         }
     };
+
+    private void startDiscoveryDelayed() {
+        new Timer().schedule(new TimerTask() {
+            @Override
+            public void run() {
+                if (!bluetoothAdapter.isDiscovering()) {
+                    bluetoothAdapter.startDiscovery();
+
+                    new Timer().schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            if (bluetoothAdapter.isDiscovering()) {
+                                bluetoothAdapter.cancelDiscovery();
+                            }
+                        }
+                    }, DISCOVERY_DURATION);
+                }
+            }
+        }, DISCOVERY_PAUSE);
+    }
 }

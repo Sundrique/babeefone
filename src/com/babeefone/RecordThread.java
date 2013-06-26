@@ -6,6 +6,8 @@ import android.media.MediaRecorder;
 
 class RecordThread extends BaseThread {
 
+    private final int FRAME_SIZE = 440;
+
     private AudioRecord audioRecord;
     private int inBufferSize;
 
@@ -17,24 +19,34 @@ class RecordThread extends BaseThread {
                 AudioFormat.CHANNEL_IN_MONO,
                 MainService.AUDIO_FORMAT,
                 inBufferSize);
+
+        VoiceActivityDetector.init();
     }
 
     public void run() {
-        short[] buffer = new short[inBufferSize];
+        short[] buffer = new short[FRAME_SIZE];
         int count;
+        int silinteFramesCount = 0;
         audioRecord.startRecording();
         while (!canceled) {
             count = audioRecord.read(buffer, 0, buffer.length);
 
             if (count > 0) {
-                short[] bf = new short[count];
-                System.arraycopy(buffer, 0, bf, 0, count);
+                if (!VoiceActivityDetector.process(buffer)) {
+                    silinteFramesCount++;
+                } else {
+                    silinteFramesCount = 0;
+                }
+                if (silinteFramesCount < 6) {
+                    short[] bf = new short[count];
+                    System.arraycopy(buffer, 0, bf, 0, count);
 
-                DataPacket dataPacket = new DataPacket();
-                dataPacket.type = DataPacket.TYPE_AUDIO_DATA;
-                dataPacket.audioData = bf;
+                    DataPacket dataPacket = new DataPacket();
+                    dataPacket.type = DataPacket.TYPE_AUDIO_DATA;
+                    dataPacket.audioData = bf;
 
-                mainService.send(dataPacket);
+                    mainService.send(dataPacket);
+                }
             }
         }
     }
@@ -46,5 +58,6 @@ class RecordThread extends BaseThread {
             audioRecord.release();
             audioRecord = null;
         }
+        VoiceActivityDetector.free();
     }
 }
